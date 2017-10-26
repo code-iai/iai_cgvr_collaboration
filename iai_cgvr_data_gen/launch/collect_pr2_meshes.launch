@@ -1,0 +1,7 @@
+<launch>
+  <param name="/mesh_destination" value="/home/georg/meshes/" />
+  <include file="$(find pr2_description)/robots/upload_pr2.launch"/>
+
+
+
+</launch>
