@@ -1,0 +1,30 @@
+objects:
+  object_names:
+    - cup_eco_orange
+    - table
+  cup_eco_orange:
+    mesh_resource: package://iai_cgvr_data_gen/meshes/cup_eco_orange.dae
+    pose:
+      frame_id: map
+      position: 
+        x: 0.5
+        y: 0.1
+        z: 0.75
+      orientation:
+        x: 0.0
+        y: 0.0
+        z: 0.0
+        w: 1.0
+  table:
+    mesh_resource: package://iai_cgvr_data_gen/meshes/optical_table.dae
+    pose:
+      frame_id: map
+      position: 
+        x: 0.5
+        y: 0.0
+        z: 0.0
+      orientation:
+        x: 0.0
+        y: 0.0
+        z: 0.0
+        w: 1.0

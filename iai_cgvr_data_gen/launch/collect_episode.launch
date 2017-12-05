@@ -1,0 +1,6 @@
+<launch>
+  <node pkg="iai_cgvr_data_gen" type="episode_logger" name="episode_logger" 
+        output="screen" >
+    <rosparam command="load" file="$(find iai_cgvr_data_gen)/config/collect_episodes.yaml" />
+  </node>
+</launch>
