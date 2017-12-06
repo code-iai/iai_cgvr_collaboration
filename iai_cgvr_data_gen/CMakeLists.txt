@@ -9,6 +9,10 @@ find_package(catkin REQUIRED COMPONENTS
   visualization_msgs
   rospy
   urdfdom_py
+  std_srvs
+  roslib
+  sensor_msgs
+  urdf
 )
 
 catkin_package(

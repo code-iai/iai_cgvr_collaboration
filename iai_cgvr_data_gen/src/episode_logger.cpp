@@ -1,6 +1,12 @@
 #include <ros/ros.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <sensor_msgs/JointState.h>
+#include <std_srvs/Trigger.h>
+#include <json.hpp>
+#include <fstream>
+#include <ros/package.h>
+#include <urdf/model.h>
 
 std_msgs::Header create_header(const std::string& frame_id,
     const ros::Time& stamp)
@@ -76,13 +82,13 @@ std_msgs::ColorRGBA create_rgba(float r, float g, float b, float a)
 class EpisodeLogger{
 public:
     EpisodeLogger(const ros::NodeHandle& nh) :
-            nh_(nh), marker_pub_(nh_.advertise<visualization_msgs::MarkerArray>("/visualization_marker_array", 1, true))
+            nh_(nh),
+            marker_pub_(nh_.advertise<visualization_msgs::MarkerArray>("/visualization_marker_array", 1, true)),
+            trigger_server_(nh_.advertiseService("emit_json", &EpisodeLogger::emit_callback, this)),
+            js_sub_(nh_.subscribe("/joint_states", 1, &EpisodeLogger::js_callback, this))
     {
-        ROS_INFO("Reading params.");
         read_parameters();
-        ROS_INFO("Publishing markers.");
         publish_markers();
-        ROS_INFO("Done.");
     }
 
     ~EpisodeLogger() {}
@@ -90,12 +96,60 @@ public:
 protected:
     ros::NodeHandle nh_;
     ros::Publisher marker_pub_;
+    ros::ServiceServer trigger_server_;
+    ros::Subscriber js_sub_;
     std::map<std::string, visualization_msgs::Marker> objects_;
+    std::vector<sensor_msgs::JointState> joint_states_;
+    urdf::Model robot_model_;
+
+    std::string strip_resource(const std::string& resource, const std::string& package)
+    {
+        return resource.substr(resource.find(package) + package.length());
+    }
+
+    bool emit_callback(std_srvs::Trigger::Request& request, std_srvs::Trigger::Response& response)
+    {
+        using json = nlohmann::json;
+        json j;
+
+        for (auto const & object_pair: objects_)
+            j["objects"][object_pair.first] = object_pair.second.mesh_resource;
+
+        // TODO: complete me with link info
+        for (auto const & link_pair: robot_model_.links_)
+            if (link_pair.second->visual.get() &&
+                link_pair.second->visual->geometry.get() &&
+                link_pair.second->visual->geometry->type == urdf::Geometry::MESH)
+            {
+                std::string mesh_resource =
+                        boost::static_pointer_cast<urdf::Mesh>(link_pair.second->visual->geometry)->filename;
+                std::string package_name ="pr2_description/";
+                j["objects"][link_pair.first] = strip_resource(mesh_resource, package_name);
+            }
+
+
+        // TODO: complete me with transform info
+        joint_states_.clear();
+        // TODO: complete me with collision matrix
+
+        std::string filename =
+            ros::package::getPath("iai_cgvr_data_gen") + "/episode_" + std::to_string(ros::Time::now().toSec()) + ".json";
+        std::ofstream o(filename);
+        o << std::setw(4) << j << std::endl;
+
+        return true;
+    }
+
+    void js_callback(const sensor_msgs::JointState::ConstPtr& msg)
+    {
+        joint_states_.push_back(*msg);
+    }
 
     void read_parameters()
     {
         read_objects();
         read_urdf();
+        read_collision_matrix();
     }
 
     void read_objects()
@@ -147,6 +201,11 @@ protected:
     }
 
     void read_urdf()
+    {
+        robot_model_.initParam("/robot_description");
+    }
+
+    void read_collision_matrix()
     {
         // TODO: implement me
     }
