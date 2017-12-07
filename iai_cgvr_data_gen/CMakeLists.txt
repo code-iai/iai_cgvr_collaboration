@@ -13,7 +13,10 @@ find_package(catkin REQUIRED COMPONENTS
   roslib
   sensor_msgs
   urdf
+  cmake_modules
 )
+
+find_package(TinyXML2 REQUIRED)
 
 catkin_package(
 #  INCLUDE_DIRS include
@@ -22,8 +25,8 @@ catkin_package(
 #  DEPENDS system_lib
 )
 
-include_directories(include ${catkin_INCLUDE_DIRS})
+include_directories(include ${catkin_INCLUDE_DIRS} ${TinyXML2_INCLUDE_DIRS})
 
 add_executable(episode_logger src/episode_logger.cpp)
 add_dependencies(episode_logger ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(episode_logger ${catkin_LIBRARIES})
+target_link_libraries(episode_logger ${catkin_LIBRARIES} ${TinyXML2_LIBRARIES})

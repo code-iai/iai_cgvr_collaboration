@@ -7,6 +7,7 @@
 #include <fstream>
 #include <ros/package.h>
 #include <urdf/model.h>
+#include <tinyxml2.h>
 
 std_msgs::Header create_header(const std::string& frame_id,
     const ros::Time& stamp)
@@ -101,6 +102,7 @@ protected:
     std::map<std::string, visualization_msgs::Marker> objects_;
     std::vector<sensor_msgs::JointState> joint_states_;
     urdf::Model robot_model_;
+    tinyxml2::XMLDocument robot_srdf_;
 
     std::string strip_resource(const std::string& resource, const std::string& package)
     {
@@ -130,7 +132,9 @@ protected:
 
         // TODO: complete me with transform info
         joint_states_.clear();
-        // TODO: complete me with collision matrix
+
+        // fill disabled collision checks
+        j["disabled-collision-checks"] = disabled_collision_checks();
 
         std::string filename =
             ros::package::getPath("iai_cgvr_data_gen") + "/episode_" + std::to_string(ros::Time::now().toSec()) + ".json";
@@ -149,7 +153,7 @@ protected:
     {
         read_objects();
         read_urdf();
-        read_collision_matrix();
+        read_srdf();
     }
 
     void read_objects()
@@ -205,9 +209,54 @@ protected:
         robot_model_.initParam("/robot_description");
     }
 
-    void read_collision_matrix()
+    void read_srdf()
     {
-        // TODO: implement me
+        robot_srdf_.Parse(readParam<std::string>("/robot_srdf").c_str());
+        if (robot_srdf_.Error())
+            throw std::runtime_error("Error parsing SRDF into XML document.");
+    }
+
+    nlohmann::json disabled_collision_checks()
+    {
+        nlohmann::json j {};
+
+        tinyxml2::XMLNode* robot = robot_srdf_.FirstChildElement("robot");
+        if (robot == nullptr)
+            throw std::runtime_error("Did not find element 'robot' in robot srdf.");
+
+        tinyxml2::XMLNode* disable_collisions = robot->FirstChildElement("disable_collisions");
+        while (disable_collisions != nullptr)
+        {
+            nlohmann::json disabled_collision;
+            const tinyxml2::XMLElement* elem = disable_collisions->ToElement();
+            if (elem == nullptr)
+                throw std::runtime_error ("Could not cast disable_collisions node into element.");
+
+            // TODO: refactor this into a method
+            const tinyxml2::XMLAttribute* link1 = elem->FindAttribute("link1");
+            if (link1 == nullptr)
+                throw std::runtime_error("Could not find attribute link1.");
+
+            disabled_collision["link1"] = link1->Value();
+
+            const tinyxml2::XMLAttribute* link2 = elem->FindAttribute("link2");
+            if (link2 == nullptr)
+                throw std::runtime_error("Could not find attribute link2.");
+
+            disabled_collision["link2"] = link2->Value();
+
+            const tinyxml2::XMLAttribute* reason = elem->FindAttribute("reason");
+            if (reason == nullptr)
+                throw std::runtime_error("Could not find attribute reason.");
+
+            disabled_collision["reason"] = reason->Value();
+
+            j.push_back(disabled_collision);
+
+            disable_collisions = disable_collisions->NextSiblingElement("disable_collisions");
+        }
+
+        return j;
     }
 
     void publish_markers() const
