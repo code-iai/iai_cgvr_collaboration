@@ -16,6 +16,9 @@ find_package(catkin REQUIRED COMPONENTS
   cmake_modules
   kdl_parser
   robot_state_publisher
+  giskard_msgs
+  actionlib
+  giskard_ros
 )
 
 find_package(TinyXML2 REQUIRED)
@@ -32,3 +35,7 @@ include_directories(include ${catkin_INCLUDE_DIRS} ${TinyXML2_INCLUDE_DIRS})
 add_executable(episode_logger src/episode_logger.cpp)
 add_dependencies(episode_logger ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(episode_logger ${catkin_LIBRARIES} ${TinyXML2_LIBRARIES})
+
+add_executable(movement_commander src/movement_commander.cpp)
+add_dependencies(movement_commander ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(movement_commander ${catkin_LIBRARIES} ${TinyXML2_LIBRARIES})

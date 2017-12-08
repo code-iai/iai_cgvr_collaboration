@@ -1,0 +1,32 @@
+thresholds:
+  left_arm:
+    joint:
+      l_shoulder_pan_error: 0.01
+      l_shoulder_lift_error: 0.01
+      l_upper_arm_roll_error: 0.01
+      l_elbow_flex_error: 0.01
+      l_forearm_roll_error: 0.01
+      l_wrist_flex_error: 0.01
+      l_wrist_roll_error: 0.01
+    cartesian:
+      l_trans_error: 0.02
+      l_rot_error: 0.03
+  right_arm:
+    joint:
+      r_shoulder_pan_error: 0.01
+      r_shoulder_lift_error: 0.01
+      r_upper_arm_roll_error: 0.01
+      r_elbow_flex_error: 0.01
+      r_forearm_roll_error: 0.01
+      r_wrist_flex_error: 0.01
+      r_wrist_roll_error: 0.01
+    cartesian:
+      r_trans_error: 0.02
+      r_rot_error: 0.03
+goals:
+  left_arm:
+    joint: [0.3764, -0.4691, 1.08146, -1.36314, 1.2187, -2.14061, -2.76629]
+    cartesian: [0.505, 0.104, 0.743, 0.523, 0.507, -0.471, 0.498]
+  right_arm:
+    joint: [-2.0153, 0.644825, -2.49044, -1.52846, -1.98821, -0.896536, -0.0483184]
+    # cartesian: [0.38, -0.11, 1.11, -0.193, 0.01, 0.72, 0.67]

@@ -1,0 +1,8 @@
+<launch>
+  <remap from="/controller_action_server/move" to="/qp_controller/command" />
+
+  <node pkg="iai_cgvr_data_gen" type="movement_commander" 
+        name="movement_commander" output="screen" >
+    <rosparam command="load" file="$(find iai_cgvr_data_gen)/config/movements.yaml" />
+  </node>
+</launch>

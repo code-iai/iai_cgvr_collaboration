@@ -125,7 +125,7 @@ public:
             nh_(nh),
             marker_pub_(nh_.advertise<visualization_msgs::MarkerArray>("/visualization_marker_array", 1, true)),
             trigger_server_(nh_.advertiseService("emit_json", &EpisodeLogger::emit_callback, this)),
-            js_sub_(nh_.subscribe("/joint_states", 1, &EpisodeLogger::js_callback, this)),
+            js_sub_(nh_.subscribe("/joint_states", 0, &EpisodeLogger::js_callback, this, ros::TransportHints().tcpNoDelay())),
             fk_solver_(get_kdl_tree(nh_))
     {
         read_parameters();
@@ -173,6 +173,7 @@ protected:
             }
 
         // fill object transforms over time...
+        ROS_INFO_STREAM("Logging " << joint_states_.size() << " joint states.");
         std::cout << "Logging " << joint_states_.size() << " joint states." << std::endl;
         for (auto const & joint_state: joint_states_)
         {
@@ -183,7 +184,6 @@ protected:
 
             // ...for joint states
 
-            std::cout << "joint state has " << joint_state.name.size() << " values" << std::endl;
             // build joint state map
             std::map<std::string, double> joint_state_map;
             if (joint_state.name.size() != joint_state.position.size())
@@ -197,7 +197,6 @@ protected:
             if (fk_solver_.JntToCart(joint_state_map, fk_results, true) != 0)
                 throw std::runtime_error("FK solver returned with an error.");
 
-            std::cout << "calculated " << fk_results.size() << " fk results" << std::endl;
             // write it into json
             for (auto const & fk_result: fk_results)
                 j["transforms"][std::to_string(joint_state.header.stamp.toSec())][fk_result.first] =
