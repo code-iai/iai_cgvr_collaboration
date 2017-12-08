@@ -14,6 +14,8 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   urdf
   cmake_modules
+  kdl_parser
+  robot_state_publisher
 )
 
 find_package(TinyXML2 REQUIRED)

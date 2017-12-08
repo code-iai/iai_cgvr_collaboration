@@ -8,6 +8,8 @@
 #include <ros/package.h>
 #include <urdf/model.h>
 #include <tinyxml2.h>
+#include <kdl_parser/kdl_parser.hpp>
+#include <robot_state_publisher/treefksolverposfull_recursive.hpp>
 
 std_msgs::Header create_header(const std::string& frame_id,
     const ros::Time& stamp)
@@ -15,7 +17,6 @@ std_msgs::Header create_header(const std::string& frame_id,
     std_msgs::Header header;
     header.frame_id = frame_id;
     header.stamp = stamp;
-    ROS_INFO_STREAM(header);
     return header;
 }
 
@@ -25,7 +26,6 @@ geometry_msgs::Vector3 create_vector3(double x, double y, double z)
     msg.x = x;
     msg.y = y;
     msg.z = z;
-    ROS_INFO_STREAM(msg);
     return msg;
 }
 
@@ -35,7 +35,6 @@ geometry_msgs::Point create_point(double x, double y, double z)
     msg.x = x;
     msg.y = y;
     msg.z = z;
-    ROS_INFO_STREAM(msg);
     return msg;
 }
 
@@ -46,7 +45,6 @@ geometry_msgs::Quaternion create_quaternion(double x, double y, double z, double
     msg.y = y;
     msg.z = z;
     msg.w = w;
-    ROS_INFO_STREAM(msg);
     return msg;
 }
 
@@ -55,7 +53,6 @@ geometry_msgs::Pose create_pose(const geometry_msgs::Point& position, const geom
     geometry_msgs::Pose msg;
     msg.position = position;
     msg.orientation = orientation;
-    ROS_INFO_STREAM(msg);
     return msg;
 }
 
@@ -65,7 +62,6 @@ geometry_msgs::PoseStamped create_pose_stamped(const std_msgs::Header& header,
     geometry_msgs::PoseStamped msg;
     msg.pose = pose;
     msg.header = header;
-    ROS_INFO_STREAM(msg);
     return msg;
 }
 
@@ -76,8 +72,51 @@ std_msgs::ColorRGBA create_rgba(float r, float g, float b, float a)
     msg.g = g;
     msg.b = b;
     msg.a = a;
-    ROS_INFO_STREAM(msg);
     return msg;
+}
+
+KDL::Tree get_kdl_tree(const ros::NodeHandle& nh)
+{
+    KDL::Tree tree;
+    if (!kdl_parser::treeFromParam("/robot_description", tree))
+      throw std::runtime_error("Could not find robot URDF in parameter '/robot_description'.");
+    return tree;
+}
+
+nlohmann::json to_json(const geometry_msgs::Pose& pose)
+{
+    nlohmann::json j;
+    j["translation"]["x"] = pose.position.x;
+    j["translation"]["y"] = pose.position.y;
+    j["translation"]["z"] = pose.position.z;
+    j["orientation"]["x"] = pose.orientation.x;
+    j["orientation"]["y"] = pose.orientation.y;
+    j["orientation"]["z"] = pose.orientation.z;
+    j["orientation"]["w"] = pose.orientation.w;
+    return j;
+}
+
+void print(const KDL::Frame& f)
+{
+    std::cout << "[(" << f.p.x() << ", " << f.p.y() << ", " << f.p.z() << "), ";
+    double x, y, z, w = 0;
+    f.M.GetQuaternion(x, y, z, w);
+    std::cout << "(" << x << ", " << y << ", " << z << ", " << w << ")]";
+}
+
+nlohmann::json to_json(const KDL::Frame& frame)
+{
+    nlohmann::json j;
+    j["translation"]["x"] = frame.p.x();
+    j["translation"]["y"] = frame.p.y();
+    j["translation"]["z"] = frame.p.z();
+    double x, y, z, w;
+    frame.M.GetQuaternion(x, y, z, w);
+    j["orientation"]["x"] = x;
+    j["orientation"]["y"] = y;
+    j["orientation"]["z"] = z;
+    j["orientation"]["w"] = w;
+    return j;
 }
 
 class EpisodeLogger{
@@ -86,7 +125,8 @@ public:
             nh_(nh),
             marker_pub_(nh_.advertise<visualization_msgs::MarkerArray>("/visualization_marker_array", 1, true)),
             trigger_server_(nh_.advertiseService("emit_json", &EpisodeLogger::emit_callback, this)),
-            js_sub_(nh_.subscribe("/joint_states", 1, &EpisodeLogger::js_callback, this))
+            js_sub_(nh_.subscribe("/joint_states", 1, &EpisodeLogger::js_callback, this)),
+            fk_solver_(get_kdl_tree(nh_))
     {
         read_parameters();
         publish_markers();
@@ -99,6 +139,7 @@ protected:
     ros::Publisher marker_pub_;
     ros::ServiceServer trigger_server_;
     ros::Subscriber js_sub_;
+    KDL::TreeFkSolverPosFull_recursive fk_solver_;
     std::map<std::string, visualization_msgs::Marker> objects_;
     std::vector<sensor_msgs::JointState> joint_states_;
     urdf::Model robot_model_;
@@ -114,10 +155,12 @@ protected:
         using json = nlohmann::json;
         json j;
 
+        // fill object -> mesh map ...
+        // ... for external objects
         for (auto const & object_pair: objects_)
-            j["objects"][object_pair.first] = object_pair.second.mesh_resource;
+            j["objects"][object_pair.first] = strip_resource(object_pair.second.mesh_resource, "iai_cgvr_data_gen");
 
-        // TODO: complete me with link info
+        // ... for robot links
         for (auto const & link_pair: robot_model_.links_)
             if (link_pair.second->visual.get() &&
                 link_pair.second->visual->geometry.get() &&
@@ -129,13 +172,43 @@ protected:
                 j["objects"][link_pair.first] = strip_resource(mesh_resource, package_name);
             }
 
+        // fill object transforms over time...
+        std::cout << "Logging " << joint_states_.size() << " joint states." << std::endl;
+        for (auto const & joint_state: joint_states_)
+        {
+            // ... external objects
+            for (auto const & object_pair: objects_)
+            j["transforms"][std::to_string(joint_state.header.stamp.toSec())][object_pair.first] =
+                    to_json(object_pair.second.pose);
 
-        // TODO: complete me with transform info
+            // ...for joint states
+
+            std::cout << "joint state has " << joint_state.name.size() << " values" << std::endl;
+            // build joint state map
+            std::map<std::string, double> joint_state_map;
+            if (joint_state.name.size() != joint_state.position.size())
+                throw std::runtime_error("Encountered joint state message with fields name and position of unequal lengths.");
+            for (size_t i=0; i<joint_state.name.size(); ++i)
+                joint_state_map.insert(std::make_pair(joint_state.name[i], joint_state.position[i]));
+
+
+            // calc FK tree
+            std::map<std::string, tf2::Stamped<KDL::Frame> > fk_results;
+            if (fk_solver_.JntToCart(joint_state_map, fk_results, true) != 0)
+                throw std::runtime_error("FK solver returned with an error.");
+
+            std::cout << "calculated " << fk_results.size() << " fk results" << std::endl;
+            // write it into json
+            for (auto const & fk_result: fk_results)
+                j["transforms"][std::to_string(joint_state.header.stamp.toSec())][fk_result.first] =
+                        to_json(fk_result.second);
+        }
         joint_states_.clear();
 
         // fill disabled collision checks
         j["disabled-collision-checks"] = disabled_collision_checks();
 
+        // write out the whole file
         std::string filename =
             ros::package::getPath("iai_cgvr_data_gen") + "/episode_" + std::to_string(ros::Time::now().toSec()) + ".json";
         std::ofstream o(filename);
